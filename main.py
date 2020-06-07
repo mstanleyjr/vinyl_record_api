@@ -37,13 +37,27 @@ def oauthroute():
 
     id_info = id_token.verify_oauth2_token(
         token['id_token'], req, client_id)
-    print(id_info, flush=True)
-    # Save to User DB - Email, and sub as id.
-    new_user_attributes = {"email": id_info["email"], "sub": id_info["sub"]}
-    new_user = datastore.Entity(key=datastore_client.key(users))
-    new_user.update(new_user_attributes)
-    datastore_client.put(new_user)
+    # Check that user is not already in db
+    query = datastore_client.query(kind=users)
+    query.add_filter("sub", "=", id_info["sub"])
+    result = list(query.fetch())
+    if len(result) == 0:
+        # Save to User DB - Email, and sub as id.
+        new_user_attributes = {"email": id_info["email"], "sub": id_info["sub"]}
+        new_user = datastore.Entity(key=datastore_client.key(users))
+        new_user.update(new_user_attributes)
+        datastore_client.put(new_user)
+
     return render_template("user_info.html", email_address=id_info["email"], jwt=token["id_token"], id=id_info["sub"])
+
+
+@app.route('/users', methods=["GET"])
+def get_users():
+    query = datastore_client.query(kind=users)
+    results = list(query.fetch())
+    for result in results:
+        result["id"] = result.pop("sub")
+    return json.dumps({"users": results}), 200
 
 
 def verify(bearer):
@@ -56,9 +70,9 @@ def verify(bearer):
         req = requests.Request()
         id_info = id_token.verify_oauth2_token(
             str(jwt), req, client_id)
-        return id_info["sub"], 200
+        return id_info["sub"]
     except ValueError:
-        return " bad bad", 418
+        return -1
 
 
 if __name__ == '__main__':
