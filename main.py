@@ -1,11 +1,13 @@
 import json
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, make_response
 from google.auth.transport import requests
 from google.cloud import datastore
 from google.oauth2 import id_token
 from requests_oauthlib import OAuth2Session
 from secrets import client_id, client_secret
-from constants import redirect_uri, scope, google_auth_endpoint, users
+from constants import redirect_uri, scope, google_auth_endpoint, users, json_mimetype, all_mimetype
+from status import status_405, status_406
+from utils import create_return, verify
 
 # This disables the requirement to use HTTPS so that you can test locally.
 import os
@@ -17,6 +19,13 @@ datastore_client = datastore.Client()
 
 oauth = OAuth2Session(client_id, redirect_uri=redirect_uri,
                       scope=scope)
+
+
+@app.before_request
+def request_checks():
+    mimetype_dict = dict(request.accept_mimetypes)
+    if json_mimetype not in mimetype_dict and all_mimetype not in mimetype_dict:
+        return create_return(status_406(), 406)
 
 
 @app.route('/')
@@ -57,22 +66,12 @@ def get_users():
     results = list(query.fetch())
     for result in results:
         result["id"] = result.pop("sub")
-    return json.dumps({"users": results}), 200
+    return create_return(json.dumps({"users": results}), 200)
 
 
-def verify(bearer):
-    try:
-        space_index = bearer.index(" ")
-        prior = bearer[:space_index]
-        if prior != "Bearer":
-            raise ValueError
-        jwt = bearer[space_index + 1:]
-        req = requests.Request()
-        id_info = id_token.verify_oauth2_token(
-            str(jwt), req, client_id)
-        return id_info["sub"]
-    except ValueError:
-        return -1
+@app.errorhandler(405)
+def method_not_allowed(e):
+    return create_return(status_405(), 405)
 
 
 if __name__ == '__main__':
