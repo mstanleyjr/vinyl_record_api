@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='index_style.css') }}">
+    <title>Vinyl Record Storage Api</title>
+</head>
+<body>
+<div align="center">
+    <h1>Welcome!</h1>
+    <p>Please use the button to authorize the Vinyl Record Storage Api</p>
+    <button onclick="window.location.href = '{{auth_url}}';">Authorize</button>
+</div>
+
+</body>
+</html>
