@@ -2,7 +2,7 @@ from flask import request, make_response
 from google.auth.transport import requests
 from google.oauth2 import id_token
 from secrets import client_id
-from constants import crates, crate_attributes, json_mimetype, vinyl
+from constants import crates, crate_attributes, json_mimetype, vinyl, vinyl_attributes
 
 
 def crate_information(crate_info_json):
@@ -41,8 +41,8 @@ def crate_attr_check(attribute, attribute_name):
     return True
 
 
-def crate_self(crate_id, path):
-    return path + crates + "/" + str(crate_id)
+def object_self(object_id, constant_name, path):
+    return path + constant_name + "/" + str(object_id)
 
 
 def create_return(data, status):
@@ -70,5 +70,27 @@ def verify(headers):
         return -1
 
 
-def vinyl_self(vinyl_id, path):
-    return path + vinyl + "/" + str(vinyl_id)
+def vinyl_information(vinyl_info_json):
+    vinyl_result = {}
+    for attribute in vinyl_attributes:
+        if attribute not in vinyl_info_json:
+            return False
+
+        if not vinyl_attr_check(vinyl_info_json[attribute], attribute):
+            return False
+
+        vinyl_result[attribute] = vinyl_info_json[attribute]
+
+    return vinyl_result
+
+
+def vinyl_attr_check(attribute, attribute_name):
+    if attribute_name == "release_year":
+        if not type(attribute) == int or attribute <= 0:
+            return False
+    else:
+        if not type(attribute) == str or len(attribute) < 1:
+            return False
+
+    return True
+
