@@ -210,6 +210,29 @@ def post_vinyl():
         return create_return(json.dumps(vinyl_info), 201)
 
 
+@app.route('/vinyl/<vinyl_id>', methods=["GET"])
+def get_vinyl_vinylid(vinyl_id):
+    # Get the vinyl
+    vinyl_key = datastore_client.key(vinyl, int(vinyl_id))
+    vinyl_record = datastore_client.get(key=vinyl_key)
+
+    if vinyl_record is None:
+        return create_return(status_404(vinyl), 404)
+
+    vinyl_record["id"] = vinyl_record.key.id
+    vinyl_record["self"] = object_self(vinyl_record.key.id, vinyl, request.url_root)
+
+    # If record in crate get crate information
+    if vinyl_record["crate"] is not None:
+        crate_key = datastore_client.key(crates, int(vinyl_record["crate"]["id"]))
+        crate = datastore_client.get(crate_key)
+        crate["id"] = crate.key.id
+        crate["self"] = object_self(crate.key.id, crates, request.url_root)
+        vinyl_record["crate"] = crate
+
+    return create_return(json.dumps(vinyl_record), 200)
+
+
 @app.errorhandler(405)
 def method_not_allowed(e):
     return create_return(status_405(), 405)
