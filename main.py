@@ -5,9 +5,9 @@ from google.cloud import datastore
 from google.oauth2 import id_token
 from requests_oauthlib import OAuth2Session
 from secrets import client_id, client_secret
-from constants import redirect_uri, scope, google_auth_endpoint, users, json_mimetype, all_mimetype
-from status import status_405, status_406
-from utils import create_return, verify
+from constants import crates, redirect_uri, scope, google_auth_endpoint, users, json_mimetype, all_mimetype
+from status import status_400, status_401, status_405, status_406
+from utils import crate_information, crate_self, create_return, verify
 
 # This disables the requirement to use HTTPS so that you can test locally.
 import os
@@ -67,6 +67,28 @@ def get_users():
     for result in results:
         result["id"] = result.pop("sub")
     return create_return(json.dumps({"users": results}), 200)
+
+
+@app.route('/crates', methods=["POST"])
+def post_crates():
+    if request.method == "POST":
+        # Verify user
+        verified = verify(request.headers)
+        if verified == -1:
+            return create_return(status_401(), 401)
+
+        crate_info = crate_information(request.get_json())
+        if not crate_info:
+            return create_return(status_400(), 400)
+
+        crate_info["owner"] = verified
+        new_crate = datastore.Entity(key=datastore_client.key(crates))
+        new_crate.update(crate_info)
+        datastore_client.put(new_crate)
+        crate_info["id"] = str(new_crate.key.id)
+        crate_info["self"] = crate_self(str(new_crate.key.id), request.url_root)
+
+        return create_return(json.dumps(crate_info), 201)
 
 
 @app.errorhandler(405)

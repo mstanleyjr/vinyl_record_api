@@ -2,7 +2,30 @@ from flask import request, make_response
 from google.auth.transport import requests
 from google.oauth2 import id_token
 from secrets import client_id
-from constants import json_mimetype
+from constants import crates, crate_attributes, json_mimetype
+
+
+def crate_information(crate_info_json):
+    crate_result = {}
+    for attribute in crate_attributes:
+        if attribute not in crate_info_json:
+            return False
+
+        if attribute == "capacity":
+            if not type(crate_info_json[attribute]) == int or crate_info_json[attribute] <= 0:
+                return False
+        else:
+            if not type(crate_info_json[attribute]) == str or len(crate_info_json[attribute]) < 1:
+                return False
+
+        crate_result[attribute] = crate_info_json[attribute]
+
+    crate_result["vinyl"] = []
+    return crate_result
+
+
+def crate_self(crate_id, path):
+    return path + crates + "/" + str(crate_id)
 
 
 def create_return(data, status):
@@ -12,8 +35,11 @@ def create_return(data, status):
     return res
 
 
-def verify(bearer):
+def verify(headers):
     try:
+        if "Authorization" not in headers:
+            return -1
+        bearer = headers["Authorization"]
         space_index = bearer.index(" ")
         prior = bearer[:space_index]
         if prior != "Bearer":
