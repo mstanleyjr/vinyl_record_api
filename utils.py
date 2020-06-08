@@ -2,7 +2,7 @@ from flask import request, make_response
 from google.auth.transport import requests
 from google.oauth2 import id_token
 from secrets import client_id
-from constants import crates, crate_attributes, json_mimetype
+from constants import crates, crate_attributes, json_mimetype, vinyl
 
 
 def crate_information(crate_info_json):
@@ -51,3 +51,7 @@ def verify(headers):
         return id_info["sub"]
     except ValueError:
         return -1
+
+
+def vinyl_self(vinyl_id, path):
+    return path + vinyl + "/" + str(vinyl_id)

@@ -5,9 +5,10 @@ from google.cloud import datastore
 from google.oauth2 import id_token
 from requests_oauthlib import OAuth2Session
 from secrets import client_id, client_secret
-from constants import crates, redirect_uri, scope, google_auth_endpoint, users, json_mimetype, all_mimetype
-from status import status_400, status_401, status_405, status_406
-from utils import crate_information, crate_self, create_return, verify
+from constants import crates, redirect_uri, scope, google_auth_endpoint, users, json_mimetype, all_mimetype, \
+    paginate_limit
+from status import status_400, status_401, status_403, status_404, status_405, status_406
+from utils import crate_information, crate_self, create_return, verify, vinyl_self
 
 # This disables the requirement to use HTTPS so that you can test locally.
 import os
@@ -69,7 +70,7 @@ def get_users():
     return create_return(json.dumps({"users": results}), 200)
 
 
-@app.route('/crates', methods=["POST"])
+@app.route('/crates', methods=["POST", "GET"])
 def post_crates():
     if request.method == "POST":
         # Verify user
@@ -89,6 +90,82 @@ def post_crates():
         crate_info["self"] = crate_self(str(new_crate.key.id), request.url_root)
 
         return create_return(json.dumps(crate_info), 201)
+
+    if request.method == "GET":
+        #         Verify user but don't return error
+        verified = verify(request.headers)
+        #         Get crates belonging to this user
+        query = datastore_client.query(kind=crates)
+        query.add_filter("owner", "=", str(verified))
+        q_offset = int(request.args.get('offset', 0))
+        crate_iterator = query.fetch(limit=paginate_limit, offset=q_offset)
+        pages = crate_iterator.pages
+        results = list(next(pages))
+        for result in results:
+            result["id"] = result.key.id
+            result["self"] = crate_self(result.key.id, request.url_root)
+            for vinyl in result["vinyl"]:
+                vinyl["self"] = vinyl_self(vinyl["id"], request.url_root)
+
+        return_info = {"crates": results}
+
+        if crate_iterator.next_page_token:
+            next_offset = q_offset + paginate_limit
+            next_url = request.base_url + "?offset=" + str(next_offset)
+            return_info["next"] = next_url
+
+        return create_return(json.dumps(return_info), 200)
+
+
+@app.route('/crates/<crate_id>', methods=["GET", "DELETE"])
+def get_delete_crate_crateid(crate_id):
+    if request.method == "GET":
+        # Verify user
+        verified = verify(request.headers)
+        if verified == -1:
+            return create_return(status_401(), 401)
+
+        #       Get crate
+        crate_key = datastore_client.key(crates, int(crate_id))
+        crate = datastore_client.get(key=crate_key)
+        if crate is None:
+            return create_return(status_404("crate"), 404)
+
+        #       Verify ownership
+        if crate["owner"] != str(verified):
+            return create_return(status_403(), 403)
+
+        # return crate
+        crate["id"] = crate.key.id
+        crate["self"] = crate_self(crate.key.id, request.url_root)
+        return create_return(json.dumps(crate), 200)
+
+    if request.method == "DELETE":
+        #         Verify user
+        verified = verify(request.headers)
+        if verified == -1:
+            return create_return(status_401(), 401)
+
+        #         Get crate
+        crate_key = datastore_client.key(crates, int(crate_id))
+        crate = datastore_client.get(key=crate_key)
+        if crate is None:
+            return create_return(status_404("crate"), 404)
+
+        #       Verify ownership
+        if crate["owner"] != str(verified):
+            return create_return(status_403(), 403)
+
+        #         Delete crate
+
+        # Remove Vinyl in future update
+        # vinyl = crate["vinyl"]
+
+        # for vinyl in vinyl:
+
+        datastore_client.delete(crate_key)
+
+        return create_return("", 204)
 
 
 @app.errorhandler(405)
