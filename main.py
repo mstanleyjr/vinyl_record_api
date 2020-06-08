@@ -190,8 +190,8 @@ def get_delete_patch_put_crate_crateid(crate_id):
     return create_return(json.dumps(crate), 200)
 
 
-@app.route('/vinyl', methods=["POST"])
-def post_vinyl():
+@app.route('/vinyl', methods=["POST", "GET"])
+def post_get_vinyl():
     if request.method == "POST":
         if not request.data:
             return create_return(status_400(), 400)
@@ -209,6 +209,32 @@ def post_vinyl():
 
         return create_return(json.dumps(vinyl_info), 201)
 
+    if request.method == "GET":
+        query = datastore_client.query(kind=vinyl)
+        q_offset = int(request.args.get('offset', 0))
+        vinyl_iterator = query.fetch(limit=paginate_limit, offset=q_offset)
+        pages = vinyl_iterator.pages
+        results = list(next(pages))
+        for result in results:
+            result["id"] = str(result.key.id)
+            result["self"] = object_self(result.key.id, crates, request.url_root)
+
+            if result["crate"] is not None:
+                crate_key = datastore_client.key(crates, int(result["crate"]["id"]))
+                crate = datastore_client.get(crate_key)
+                crate["id"] = crate.key.id
+                crate["self"] = object_self(crate.key.id, crates, request.url_root)
+                result["crate"] = crate
+
+        return_info = {"vinyl": results}
+
+        if vinyl_iterator.next_page_token:
+            next_offset = q_offset + paginate_limit
+            next_url = request.base_url + "?offset=" + str(next_offset)
+            return_info["next"] = next_url
+
+        return create_return(json.dumps(return_info), 200)
+
 
 @app.route('/vinyl/<vinyl_id>', methods=["GET"])
 def get_vinyl_vinylid(vinyl_id):
@@ -219,14 +245,14 @@ def get_vinyl_vinylid(vinyl_id):
     if vinyl_record is None:
         return create_return(status_404(vinyl), 404)
 
-    vinyl_record["id"] = vinyl_record.key.id
+    vinyl_record["id"] = str(vinyl_record.key.id)
     vinyl_record["self"] = object_self(vinyl_record.key.id, vinyl, request.url_root)
 
     # If record in crate get crate information
     if vinyl_record["crate"] is not None:
         crate_key = datastore_client.key(crates, int(vinyl_record["crate"]["id"]))
         crate = datastore_client.get(crate_key)
-        crate["id"] = crate.key.id
+        crate["id"] = str(crate.key.id)
         crate["self"] = object_self(crate.key.id, crates, request.url_root)
         vinyl_record["crate"] = crate
 
