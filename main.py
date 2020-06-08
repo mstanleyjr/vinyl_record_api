@@ -6,9 +6,10 @@ from google.oauth2 import id_token
 from requests_oauthlib import OAuth2Session
 from secrets import client_id, client_secret
 from constants import crates, redirect_uri, scope, google_auth_endpoint, users, json_mimetype, all_mimetype, \
-    paginate_limit
+    paginate_limit, vinyl
 from status import status_400, status_401, status_403, status_404, status_405, status_406
-from utils import crate_information, crate_information_indiv, crate_self, create_return, verify, vinyl_self
+from utils import crate_information, crate_information_indiv, object_self, create_return, verify, vinyl_information, \
+    vinyl_information_indiv
 
 # This disables the requirement to use HTTPS so that you can test locally.
 import os
@@ -91,7 +92,7 @@ def post_crates():
         new_crate.update(crate_info)
         datastore_client.put(new_crate)
         crate_info["id"] = str(new_crate.key.id)
-        crate_info["self"] = crate_self(str(new_crate.key.id), request.url_root)
+        crate_info["self"] = object_self(new_crate.key.id, crates, request.url_root)
 
         return create_return(json.dumps(crate_info), 201)
 
@@ -107,9 +108,10 @@ def post_crates():
         results = list(next(pages))
         for result in results:
             result["id"] = result.key.id
-            result["self"] = crate_self(result.key.id, request.url_root)
-            for vinyl in result["vinyl"]:
-                vinyl["self"] = vinyl_self(vinyl["id"], request.url_root)
+            result["self"] = object_self(result.key.id, crates, request.url_root)
+
+            for vinyl_record in result["vinyl"]:
+                vinyl_record["self"] = object_self(vinyl_record["id"], vinyl, request.url_root)
 
         return_info = {"crates": results}
 
@@ -122,7 +124,7 @@ def post_crates():
 
 
 @app.route('/crates/<crate_id>', methods=["GET", "DELETE", "PATCH", "PUT"])
-def get_delete_crate_crateid(crate_id):
+def get_delete_patch_put_crate_crateid(crate_id):
     # Verify user
     verified = verify(request.headers)
     if verified == -1:
@@ -174,20 +176,155 @@ def get_delete_crate_crateid(crate_id):
         crate.update(crate_attributes)
         datastore_client.put(crate)
         crate["id"] = crate.key.id
-        crate["self"] = crate_self(crate.key.id, request.url_root)
+        crate["self"] = object_self(crate.key.id, crates, request.url_root)
         # For records in vinyl
-    #     Return 303
+        #     Return 303
         res = make_response(crate)
         res.status_code = 303
         res.headers.set("Location", crate["self"])
         return res
 
-
     # Fall through for requests that return 200 response (GET and PATCH)
     crate["id"] = crate.key.id
-    crate["self"] = crate_self(crate.key.id, request.url_root)
+    crate["self"] = object_self(crate.key.id, crates, request.url_root)
     # For records in vinyl
     return create_return(json.dumps(crate), 200)
+
+
+@app.route('/vinyl', methods=["POST", "GET"])
+def post_get_vinyl():
+    if request.method == "POST":
+        if not request.data:
+            return create_return(status_400(), 400)
+        vinyl_info = vinyl_information(request.get_json())
+
+        if not vinyl_info:
+            return create_return(status_400(), 400)
+
+        vinyl_info["crate"] = None
+        new_vinyl = datastore.Entity(key=datastore_client.key(vinyl))
+        new_vinyl.update(vinyl_info)
+        datastore_client.put(new_vinyl)
+        vinyl_info["id"] = str(new_vinyl.key.id)
+        vinyl_info["self"] = object_self(new_vinyl.key.id, vinyl, request.url_root)
+
+        return create_return(json.dumps(vinyl_info), 201)
+
+    if request.method == "GET":
+        query = datastore_client.query(kind=vinyl)
+        q_offset = int(request.args.get('offset', 0))
+        vinyl_iterator = query.fetch(limit=paginate_limit, offset=q_offset)
+        pages = vinyl_iterator.pages
+        results = list(next(pages))
+        for result in results:
+            result["id"] = str(result.key.id)
+            result["self"] = object_self(result.key.id, crates, request.url_root)
+
+            if result["crate"] is not None:
+                crate_key = datastore_client.key(crates, int(result["crate"]["id"]))
+                crate = datastore_client.get(crate_key)
+                crate["id"] = crate.key.id
+                crate["self"] = object_self(crate.key.id, crates, request.url_root)
+                result["crate"] = crate
+
+        return_info = {"vinyl": results}
+
+        if vinyl_iterator.next_page_token:
+            next_offset = q_offset + paginate_limit
+            next_url = request.base_url + "?offset=" + str(next_offset)
+            return_info["next"] = next_url
+
+        return create_return(json.dumps(return_info), 200)
+
+
+@app.route('/vinyl/<vinyl_id>', methods=["GET", "PATCH", "PUT", "DELETE"])
+def get_patch_put_delete_vinyl_vinylid(vinyl_id):
+    # Get the vinyl
+    vinyl_key = datastore_client.key(vinyl, int(vinyl_id))
+    vinyl_record = datastore_client.get(key=vinyl_key)
+
+    if vinyl_record is None:
+        return create_return(status_404(vinyl), 404)
+
+    crate = None
+    # If record in crate get crate information
+    if vinyl_record["crate"] is not None:
+        crate_key = datastore_client.key(crates, int(vinyl_record["crate"]["id"]))
+        crate = datastore_client.get(crate_key)
+        crate["self"] = object_self(crate.key.id, crates, request.url_root)
+        # vinyl_record["crate"] = crate
+
+    if request.method == "PATCH":
+        # Verify the user if the vinyl is in a crate
+        if vinyl_record["crate"] is not None:
+            verified = verify(request.headers)
+            if verified == -1:
+                return create_return(status_401(), 401)
+
+            if crate["owner"] != str(verified):
+                return create_return(status_403(), 403)
+
+        if not request.data:
+            return create_return(status_400(), 400)
+        vinyl_attributes = vinyl_information_indiv(request.get_json())
+
+        if not vinyl_attributes:
+            return create_return(status_400(), 400)
+
+        vinyl_record.update(vinyl_attributes)
+        datastore_client.put(vinyl_record)
+
+    if request.method == "PUT":
+        if vinyl_record["crate"] is not None:
+            verified = verify(request.headers)
+            if verified == -1:
+                return create_return(status_401(), 401)
+
+            if crate["owner"] != str(verified):
+                return create_return(status_403(), 403)
+
+        if not request.data:
+            return create_return(status_400(), 400)
+
+        vinyl_attributes = vinyl_information(request.get_json())
+
+        if not vinyl_attributes:
+            return create_return(status_400(), 400)
+
+        vinyl_record.update(vinyl_attributes)
+        datastore_client.put(vinyl_record)
+        vinyl_record["id"] = vinyl_record.key.id
+        vinyl_record["self"] = object_self(vinyl_record.key.id, vinyl, request.url_root)
+        vinyl_record["crate"] = crate
+        # For records in vinyl
+        #     Return 303
+        res = make_response(vinyl_record)
+        res.status_code = 303
+        res.headers.set("Location", vinyl_record["self"])
+        return res
+
+    if request.method == "DELETE":
+        # Delete vinyl
+        if vinyl_record["crate"] is not None:
+            verified = verify(request.headers)
+            if verified == -1:
+                return create_return(status_401(), 401)
+
+            if crate["owner"] != str(verified):
+                return create_return(status_403(), 403)
+
+        # Remove Vinyl in future update
+
+        datastore_client.delete(vinyl_key)
+
+        return create_return("", 204)
+
+    # Fall through for GET and PATCH
+    vinyl_record["id"] = str(vinyl_record.key.id)
+    vinyl_record["self"] = object_self(vinyl_record.key.id, vinyl, request.url_root)
+    vinyl_record["crate"] = crate
+
+    return create_return(json.dumps(vinyl_record), 200)
 
 
 @app.errorhandler(405)

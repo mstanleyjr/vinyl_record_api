@@ -10,4 +10,5 @@ vinyl = "vinyl"
 json_mimetype = "application/json"
 all_mimetype = "*/*"
 crate_attributes = ["location", "color", "capacity"]
+vinyl_attributes = ["artist", "title", "release_year"]
 paginate_limit = 5
