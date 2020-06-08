@@ -11,17 +11,34 @@ def crate_information(crate_info_json):
         if attribute not in crate_info_json:
             return False
 
-        if attribute == "capacity":
-            if not type(crate_info_json[attribute]) == int or crate_info_json[attribute] <= 0:
-                return False
-        else:
-            if not type(crate_info_json[attribute]) == str or len(crate_info_json[attribute]) < 1:
-                return False
-
+        if not crate_attr_check(crate_info_json[attribute], attribute):
+            return False
         crate_result[attribute] = crate_info_json[attribute]
 
-    crate_result["vinyl"] = []
     return crate_result
+
+
+def crate_information_indiv(crate_info_json):
+    crate_result = {}
+    for attribute in crate_info_json:
+        if attribute in crate_attributes:
+            if not crate_attr_check(crate_info_json[attribute], attribute):
+                return False
+
+            crate_result[attribute] = crate_info_json[attribute]
+
+    return crate_result
+
+
+def crate_attr_check(attribute, attribute_name):
+    if attribute_name == "capacity":
+        if not type(attribute) == int or attribute <= 0:
+            return False
+    else:
+        if not type(attribute) == str or len(attribute) < 1:
+            return False
+
+    return True
 
 
 def crate_self(crate_id, path):
