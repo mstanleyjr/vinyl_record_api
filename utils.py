@@ -84,6 +84,18 @@ def vinyl_information(vinyl_info_json):
     return vinyl_result
 
 
+def vinyl_information_indiv(vinyl_info_json):
+    vinyl_result = {}
+    for attribute in vinyl_info_json:
+        if attribute in vinyl_attributes:
+            if not vinyl_attr_check(vinyl_info_json[attribute], attribute):
+                return False
+
+            vinyl_result[attribute] = vinyl_info_json[attribute]
+
+    return vinyl_result
+
+
 def vinyl_attr_check(attribute, attribute_name):
     if attribute_name == "release_year":
         if not type(attribute) == int or attribute <= 0:
@@ -93,4 +105,3 @@ def vinyl_attr_check(attribute, attribute_name):
             return False
 
     return True
-
