@@ -1,4 +1,4 @@
-redirect_uri = "http://127.0.0.1:8081/oauth"
+redirect_uri = "https://vinylrecordstorageapi.appspot.com/oauth"
 scope = ['https://www.googleapis.com/auth/userinfo.email',
          'https://www.googleapis.com/auth/userinfo.profile', 'openid']
 google_auth_endpoint = "https://accounts.google.com/o/oauth2/v2/auth"
