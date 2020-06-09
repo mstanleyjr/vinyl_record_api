@@ -11,7 +11,7 @@ from status import status_400, status_400_store, status_400_withdraw, status_401
     status_404_store, status_405, \
     status_406
 from utils import crate_information, crate_information_indiv, object_self, create_return, verify, vinyl_information, \
-    vinyl_information_indiv
+    vinyl_information_indiv, new_object, vinyl_in_crate
 
 # This disables the requirement to use HTTPS so that you can test locally.
 import os
@@ -90,13 +90,7 @@ def post_crates():
 
         crate_info["owner"] = verified
         crate_info["vinyl"] = []
-        new_crate = datastore.Entity(key=datastore_client.key(crates))
-        new_crate.update(crate_info)
-        datastore_client.put(new_crate)
-        crate_info["id"] = str(new_crate.key.id)
-        crate_info["self"] = object_self(new_crate.key.id, crates, request.url_root)
-
-        return create_return(json.dumps(crate_info), 201)
+        return create_return(json.dumps(new_object(crate_info, crates, datastore_client, request.url_root)), 201)
 
     if request.method == "GET":
         #         Verify user but don't return error
@@ -110,14 +104,8 @@ def post_crates():
         pages = crate_iterator.pages
         results = list(next(pages))
         for result in results:
-            result["id"] = result.key.id
-            result["self"] = object_self(result.key.id, crates, request.url_root)
-
-            for vinyl_record in result["vinyl"]:
-                vinyl_record["self"] = object_self(vinyl_record["id"], vinyl, request.url_root)
-                vinyl_key = datastore_client.key(vinyl, int(vinyl_record["id"]))
-                vinyl_object = datastore_client.get(vinyl_key)
-                vinyl_record["title"] = vinyl_object["title"]
+            # Format Vinyl for Crate
+            vinyl_in_crate(result, datastore_client, request.url_root)
 
         return_info = {"crates": results, "collection_size": collection_size}
 
@@ -136,25 +124,21 @@ def get_delete_patch_put_crate_crateid(crate_id):
     if verified == -1:
         return create_return(status_401(), 401)
 
-    #       Get crate
+    # Get crate
     crate_key = datastore_client.key(crates, int(crate_id))
     crate = datastore_client.get(key=crate_key)
 
     if crate is None:
         return create_return(status_404("crate"), 404)
 
-    #       Verify ownership
+    # Verify ownership
     if crate["owner"] != str(verified):
         return create_return(status_403(), 403)
 
     if request.method == "DELETE":
         # Delete crate
-
-        # Remove Vinyl in future update
-        # vinyl = crate["vinyl"]
-
         for record in crate["vinyl"]:
-            #     Get vinyl and remove the crate
+            # Get vinyl and remove the crate
             vinyl_key = datastore_client.key(vinyl, int(record["id"]))
             vinyl_record = datastore_client.get(key=vinyl_key)
             vinyl_record["crate"] = None
@@ -187,27 +171,16 @@ def get_delete_patch_put_crate_crateid(crate_id):
 
         crate.update(crate_attributes)
         datastore_client.put(crate)
-        crate["id"] = crate.key.id
-        crate["self"] = object_self(crate.key.id, crates, request.url_root)
-        for vinyl_record in crate["vinyl"]:
-            vinyl_record["self"] = object_self(vinyl_record["id"], vinyl, request.url_root)
-            vinyl_key = datastore_client.key(vinyl, int(vinyl_record["id"]))
-            vinyl_object = datastore_client.get(vinyl_key)
-            vinyl_record["title"] = vinyl_object["title"]
-        #     Return 303
+        vinyl_in_crate(crate, datastore_client, request.url_root)
+
+        # Return 303
         res = make_response(crate)
         res.status_code = 303
         res.headers.set("Location", crate["self"])
         return res
 
     # Fall through for requests that return 200 response (GET and PATCH)
-    crate["id"] = crate.key.id
-    crate["self"] = object_self(crate.key.id, crates, request.url_root)
-    for vinyl_record in crate["vinyl"]:
-        vinyl_record["self"] = object_self(vinyl_record["id"], vinyl, request.url_root)
-        vinyl_key = datastore_client.key(vinyl, int(vinyl_record["id"]))
-        vinyl_object = datastore_client.get(vinyl_key)
-        vinyl_record["title"] = vinyl_object["title"]
+    vinyl_in_crate(crate, datastore_client, request.url_root)
 
     return create_return(json.dumps(crate), 200)
 
@@ -223,13 +196,7 @@ def post_get_vinyl():
             return create_return(status_400(), 400)
 
         vinyl_info["crate"] = None
-        new_vinyl = datastore.Entity(key=datastore_client.key(vinyl))
-        new_vinyl.update(vinyl_info)
-        datastore_client.put(new_vinyl)
-        vinyl_info["id"] = str(new_vinyl.key.id)
-        vinyl_info["self"] = object_self(new_vinyl.key.id, vinyl, request.url_root)
-
-        return create_return(json.dumps(vinyl_info), 201)
+        return create_return(json.dumps(new_object(vinyl_info, vinyl, datastore_client, request.url_root)), 201)
 
     if request.method == "GET":
         query = datastore_client.query(kind=vinyl)

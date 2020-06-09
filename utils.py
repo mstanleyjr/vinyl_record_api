@@ -1,6 +1,7 @@
 from flask import request, make_response
 from google.auth.transport import requests
 from google.oauth2 import id_token
+from google.cloud import datastore
 from secrets import client_id
 from constants import crates, crate_attributes, json_mimetype, vinyl, vinyl_attributes
 
@@ -50,6 +51,26 @@ def create_return(data, status):
     res.mimetype = json_mimetype
     res.status_code = int(status)
     return res
+
+
+def new_object(object_info, kind_constant, ds_client, path):
+    new_object = datastore.Entity(key=ds_client.key(kind_constant))
+    new_object.update(object_info)
+    ds_client.put(new_object)
+    object_info["id"] = str(new_object.key.id)
+    object_info["self"] = object_self(new_object.key.id, kind_constant, path)
+    return object_info
+
+
+def vinyl_in_crate(crate, ds_client, path):
+    crate["id"] = crate.key.id
+    crate["self"] = object_self(crate.key.id, crates, path)
+
+    for vinyl_record in crate["vinyl"]:
+        vinyl_record["self"] = object_self(vinyl_record["id"], vinyl, path)
+        vinyl_key = ds_client.key(vinyl, int(vinyl_record["id"]))
+        vinyl_object = ds_client.get(vinyl_key)
+        vinyl_record["title"] = vinyl_object["title"]
 
 
 def verify(headers):
